@@ -1,4 +1,7 @@
+import uvicorn
 from fastapi import FastAPI
+
+from app.config import settings
 from app.database import engine, Base, SessionLocal
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -11,8 +14,7 @@ from app.models.borrow import BorrowRecord
 from app.models.fine import Fine
 from datetime import datetime
 from app.schemas.user import UserCreate
-from sqlalchemy import or_
-
+from sqlalchemy import or_, select
 app = FastAPI()
 
 def create_tables():
@@ -38,8 +40,8 @@ def create_book(book: BookCreate, db: Session = Depends(get_db)):
     return new_book
 
 @app.get("/books")
-def get_books(db: Session = Depends(get_db)):
-    return db.query(Book).all()
+def get_books(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    return db.query(Book).offset(skip).limit(limit).all()
 
 
 @app.post("/borrow/{user_id}/{book_id}")
@@ -145,3 +147,4 @@ def books_by_genre(genre: str, db: Session = Depends(get_db)):
     ).all()
 
     return books
+

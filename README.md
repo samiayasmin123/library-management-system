@@ -18,3 +18,9 @@
 - Authentication (JWT)
 - Admin/Member roles
 - AI Chat Assistant
+
+
+## Setup
+```bash
+uv venv --python 3.14
+```
