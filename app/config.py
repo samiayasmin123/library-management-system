@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     app_name: str = "Awesome API"
     DATABASE_URL: str
     PORT: int = 8000
+
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
