@@ -6,8 +6,12 @@ class BookCreate(BaseModel):
     genre: str
     description: str
 
-class BookResponse(BookCreate):
+class BookOut(BaseModel):
     id: int
+    title: str
+    author: str
+    genre: str
+    description: str
     is_available: bool
 
     class Config:

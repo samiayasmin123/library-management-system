@@ -23,34 +23,22 @@ from app.utils.security import verify_password
 from app.utils.jwt import create_access_token
 
 
+from app.routes.book import router as book_router
+
+
+
 app = FastAPI()
+app.include_router(book_router)
 
 
-def create_tables():
+@app.on_event("startup")
+def startup():
+    print("STARTUP CALLED - CREATING TABLES")
     Base.metadata.create_all(bind=engine)
-    
-create_tables()
+    print("TABLE CREATION DONE")
 
-@app.post("/books")
-def create_book(book: BookCreate, db: Session = Depends(get_db)):
 
-    new_book = Book(
-        title=book.title,
-        author=book.author,
-        genre=book.genre,
-        description=book.description,
-        is_available=True
-    )
 
-    db.add(new_book)
-    db.commit()
-    db.refresh(new_book)
-
-    return new_book
-
-@app.get("/books")
-def get_books(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    return db.query(Book).offset(skip).limit(limit).all()
 
 
 @app.post("/borrow/{user_id}/{book_id}")
@@ -127,35 +115,8 @@ def return_book(user_id: int, book_id: int, db: Session = Depends(get_db)):
 
 
 
-@app.get("/books/search")
-def search_books(query: str, db: Session = Depends(get_db)):
-
-    books = db.query(Book).filter(
-        or_(
-            Book.title.ilike(f"%{query}%"),
-            Book.author.ilike(f"%{query}%")
-        )
-    ).all()
-
-    return books
 
 
-@app.get("/books/available")
-def available_books(db: Session = Depends(get_db)):
-
-    books = db.query(Book).filter(Book.is_available == True).all()
-
-    return books
-
-
-@app.get("/books/genre/{genre}")
-def books_by_genre(genre: str, db: Session = Depends(get_db)):
-
-    books = db.query(Book).filter(
-        Book.genre.ilike(f"%{genre}%")
-    ).all()
-
-    return books
 
 
 @app.post("/register")

@@ -1,68 +1,49 @@
-#from app.database import SessionLocal
-#from app.models import Book, Category
-
-
-##def book_seeder():
-    #import csv
-    #with open("data/Best_Books_Ever.csv", "r") as file:
-        #reader = csv.reader(file)
-        #next(reader)
-        #batch = []
-        #for i, row in enumerate(reader):
-            #batch.append(Book(title=row[1], author=row[3], genre=row[8], description=row[5]))
-
-        #db = SessionLocal()
-        #db.add_all(batch)
-        #db.commit()
-        #db.close()
-
 from app.database import SessionLocal
 from app.models.book import Book
 from app.utils.embedding import get_embedding
 import csv
+import os
 
 
 def book_seeder():
     db = SessionLocal()
+    books = []
 
     try:
-        books = []
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        CSV_PATH = os.path.join(BASE_DIR, "../../data/Best_Books_Ever.csv")
 
-        with open("data/Best_Books_Ever.csv", "r", encoding="utf-8") as file:
+        with open(CSV_PATH, "r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
 
             for i, row in enumerate(reader):
-                # 1. Create combined text for embedding
-                text = f"{row['title']} {row['genres']} {row['description']}"
 
-                # 2. Get embedding vector
+                # STOP AFTER 100 BOOKS
+                if i >= 100:
+                    break
+
+                text = f"{row.get('title','')} {row.get('genres','')} {row.get('description','')}"
                 embedding = get_embedding(text)
 
-                # 3. Create Book object
-                book = Book(
-                    title=row["title"],
-                    author=row["author"],
-                    genre=row["genres"],
-                    description=row["description"],
-                    is_available=True,
-                    embedding=embedding
+                books.append(
+                    Book(
+                        title=row.get("title", ""),
+                        author=row.get("author", ""),
+                        genre=row.get("genres", ""),
+                        description=row.get("description", ""),
+                        is_available=True,
+                        embedding=embedding
+                    )
                 )
 
-                books.append(book)
-                if i == 0:
-                   
-                   break
+            db.add_all(books)
+            db.commit()
 
-
-        
-        db.add_all(books)
-        db.commit()
-
-        print(f"Books seeded successfully: {len(books)} records inserted")
+        print("SEEDING COMPLETED: 100 BOOKS ONLY")
 
     except Exception as e:
         db.rollback()
-        print("Seeding failed:", e)
+        print("ERROR:", e)
 
     finally:
         db.close()
