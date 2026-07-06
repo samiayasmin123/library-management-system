@@ -3,6 +3,7 @@ from app.models.book import Book
 from app.utils.embedding import get_embedding
 import csv
 import os
+import ast
 
 
 def book_seeder():
@@ -22,22 +23,35 @@ def book_seeder():
                 if i >= 100:
                     break
 
-                text = f"{row.get('title','')} {row.get('genres','')} {row.get('description','')}"
+                text = (
+                    f"{row.get('title', '')} "
+                    f"{row.get('genres', '')} "
+                    f"{row.get('description', '')}"
+                )
+
                 embedding = get_embedding(text)
+
+                # Convert genre string to Python list
+                genre = row.get("genres", "[]")
+
+                try:
+                    genre = ast.literal_eval(genre)
+                except Exception:
+                    genre = []
 
                 books.append(
                     Book(
                         title=row.get("title", ""),
                         author=row.get("author", ""),
-                        genre=row.get("genres", ""),
+                        genre=genre,
                         description=row.get("description", ""),
                         is_available=True,
-                        embedding=embedding
+                        embedding=embedding,
                     )
                 )
 
-            db.add_all(books)
-            db.commit()
+        db.add_all(books)
+        db.commit()
 
         print("SEEDING COMPLETED: 100 BOOKS ONLY")
 

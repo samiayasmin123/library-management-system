@@ -1,179 +1,31 @@
-import uvicorn
 from fastapi import FastAPI
-
-from app.config import settings
-from app.database import engine, Base, SessionLocal
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models.book import Book
-from app.schemas.book import BookCreate
-from app.models.user import User
-from app.models.category import Category
-from app.models.borrow import BorrowRecord
-from app.models.fine import Fine
-from datetime import datetime
-from app.schemas.user import UserCreate
-from sqlalchemy import or_, select
-from app.schemas.auth import UserCreate
-from app.models.user import User
-from app.utils.security import hash_password
-from app.schemas.auth import UserLogin
-from app.utils.security import verify_password
-from app.utils.jwt import create_access_token
-
-
+from app.database import Base, engine
 from app.routes.book import router as book_router
+from app.routes.auth import router as auth_router
+from app.routes.borrow import router as borrow_router
+from app.models.chat_session import ChatSession
+from app.models.chat_message import ChatMessage
+from app.models.pending_action import PendingAction
+from app.routes.chat import router as chat_router
 
 
 
-app = FastAPI()
+app = FastAPI(
+    title="Library Management System"
+)
+
+app.include_router(chat_router)
+
+
+
+# Register routers
+app.include_router(auth_router)
 app.include_router(book_router)
+app.include_router(borrow_router)
 
 
-@app.on_event("startup")
-def startup():
-    print("STARTUP CALLED - CREATING TABLES")
-    Base.metadata.create_all(bind=engine)
-    print("TABLE CREATION DONE")
-
-
-
-
-
-@app.post("/borrow/{user_id}/{book_id}")
-def borrow_book(user_id: int, book_id: int, db: Session = Depends(get_db)):
-
-    book = db.query(Book).filter(Book.id == book_id).first()
-
-    if not book:
-        return {"message": "Book not found"}
-
-    if not book.is_available:
-        return {"message": "Book already borrowed"}
-
-    # mark book unavailable
-    book.is_available = False
-
-    borrow = BorrowRecord(
-        user_id=user_id,
-        book_id=book_id,
-        borrow_date=datetime.utcnow(),
-        status="borrowed"
-    )
-
-    db.add(borrow)
-    db.commit()
-
-    return {"message": "Book borrowed successfully"}
-
-
-@app.post("/users")
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-
-    new_user = User(
-        name=user.name,
-        email=user.email,
-        password=user.password,
-        role=user.role
-    )
-
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    return new_user
-
-
-@app.post("/return/{user_id}/{book_id}")
-def return_book(user_id: int, book_id: int, db: Session = Depends(get_db)):
-
-    borrow = db.query(BorrowRecord).filter(
-        BorrowRecord.user_id == user_id,
-        BorrowRecord.book_id == book_id,
-        BorrowRecord.status == "borrowed"
-    ).first()
-
-    if not borrow:
-        return {"message": "No active borrow found"}
-
-    book = db.query(Book).filter(Book.id == book_id).first()
-
-    if not book:
-        return {"message": "Book not found"}
-
-    # make book available again
-    book.is_available = True
-
-    # update borrow record
-    borrow.status = "returned"
-    borrow.return_date = datetime.utcnow()
-
-    db.commit()
-
-    return {"message": "Book returned successfully"}
-
-
-
-
-
-
-
-@app.post("/register")
-def register(
-    user: UserCreate,
-    db: Session = Depends(get_db)
-):
-
-    existing_user = db.query(User).filter(
-        User.email == user.email
-    ).first()
-
-    if existing_user:
-        return {
-            "message": "Email already exists"
-        }
-
-    new_user = User(
-        name=user.name,
-        email=user.email,
-        password=hash_password(user.password),
-        role=user.role
-    )
-
-    db.add(new_user)
-    db.commit()
-
+@app.get("/")
+def home():
     return {
-        "message": "User registered successfully"
-    }
-
-
-
-@app.post("/login")
-def login(user: UserLogin, db: Session = Depends(get_db)):
-
-    db_user = db.query(User).filter(
-        User.email == user.email
-    ).first()
-
-    if not db_user:
-        return {"message": "Invalid email or password"}
-
-    if not verify_password(
-        user.password,
-        db_user.password
-    ):
-        return {"message": "Invalid email or password"}
-
-    access_token = create_access_token(
-        data={
-            "user_id": db_user.id,
-            "role": db_user.role
-        }
-    )
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
+        "message": "Library Management System API is running."
     }

@@ -16,7 +16,7 @@
     ##category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
 from sqlalchemy import Column, Integer, String, Text, Boolean
 from pgvector.sqlalchemy import Vector
-
+from sqlalchemy.dialects.postgresql import JSON
 from app.database import Base
 
 
@@ -26,7 +26,7 @@ class Book(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     author = Column(String)
-    genre = Column(Text)
+    genre = Column(JSON)
     description = Column(Text)
     is_available = Column(Boolean, default=True)
 

@@ -1,41 +1,53 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-
+from typing import List
+from app.utils.similarity import cosine_similarity
 from app.database import get_db
 from app.models.book import Book
 from app.schemas.book import BookCreate, BookOut
 from fastapi import HTTPException
 from app.utils.embedding import get_embedding
+import numpy as np
+from fastapi import Depends
+from app.utils.deps import admin_only
+
 
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
 
 
-@router.post("/", response_model=BookOut)
-def create_book(book: BookCreate, db: Session = Depends(get_db)):
+@router.post("/", response_model=BookOut, dependencies=[Depends(admin_only)])
+def create_book(
+    book: BookCreate,
+    db: Session = Depends(get_db)
+):
 
-    
-        text = f"{book.title} {book.author} {book.genre} {book.description}"
-        embedding = get_embedding(text)
+    text = f"{book.title} {book.author} {' '.join(book.genre)} {book.description}"
+    embedding = get_embedding(text)
 
-        new_book = Book(
-            title=book.title,
-            author=book.author,
-            genre=book.genre,
-            description=book.description,
-            is_available=True,
-            embedding=embedding
-        )
+    new_book = Book(
+        title=book.title,
+        author=book.author,
+        genre=book.genre,
+        description=book.description,
+        is_available=True,
+        embedding=embedding
+    )
 
-        db.add(new_book)
-        db.commit()
-        db.refresh(new_book)
+    db.add(new_book)
+    db.commit()
+    db.refresh(new_book)
 
-        return new_book
-    
-
+    return BookOut(
+        id=new_book.id,
+        title=new_book.title,
+        author=new_book.author,
+        genre=new_book.genre,
+        description=new_book.description,
+        is_available=new_book.is_available
+    )
 
     
 
@@ -92,20 +104,40 @@ def delete_book(book_id: int, db: Session = Depends(get_db)):
     return {"message": "Book deleted successfully"}
 
 
-@router.get("/search")
+@router.get("/search", response_model=list[BookOut])
 def search_books(query: str, db: Session = Depends(get_db)):
 
-    books = db.query(Book).filter(
-        or_(
-            Book.title.ilike(f"%{query}%"),
-            Book.author.ilike(f"%{query}%")
+    query_embedding = np.array(get_embedding(query))
+
+    books = db.query(Book).all()
+
+    scored_books = []
+
+    for book in books:
+        if book.embedding is None:
+            continue
+
+        book_embedding = np.array(book.embedding)
+
+        score = cosine_similarity(query_embedding, book_embedding)
+        scored_books.append((score, book))
+
+    scored_books.sort(key=lambda x: x[0], reverse=True)
+
+    return [
+        BookOut(
+            id=book.id,
+            title=book.title,
+            author=book.author,
+            genre=book.genre,
+            description=book.description,
+            is_available=book.is_available
         )
-    ).all()
+        for score, book in scored_books[:10]
+    ]
 
-    return books
 
-
-@router.get("/available")
+@router.get("/available", response_model=List[BookOut])
 def available_books(db: Session = Depends(get_db)):
 
     books = db.query(Book).filter(Book.is_available == True).all()
@@ -113,7 +145,7 @@ def available_books(db: Session = Depends(get_db)):
     return books
 
 
-@router.get("/genre/{genre}")
+@router.get("/genre/{genre}", response_model=List[BookOut])
 def books_by_genre(genre: str, db: Session = Depends(get_db)):
 
     books = db.query(Book).filter(
