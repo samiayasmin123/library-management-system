@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Library Assistant</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <h1> AI Library Assistant</h1>
+
+    <p>The frontend is connected successfully.</p>
+
+    <hr>
+
+    <label>Session ID</label><br>
+    <input type="number" id="session" value="13"><br><br>
+
+    <label>User ID</label><br>
+    <input type="number" id="user" value="1"><br><br>
+
+    <label>Message</label><br>
+    <input
+        type="text"
+        id="message"
+        placeholder="Type your message..."
+        style="width:400px;"
+    >
+
+    <button onclick="sendMessage()">
+        Send
+    </button>
+
+    <hr>
+
+    <h3>Response</h3>
+
+    <pre id="response">
+No response yet...
+    </pre>
+
+    <script src="/static/index.js"></script>
+
+</body>
+</html>

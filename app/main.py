@@ -7,7 +7,8 @@ from app.models.chat_session import ChatSession
 from app.models.chat_message import ChatMessage
 from app.models.pending_action import PendingAction
 from app.routes.chat import router as chat_router
-
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 
 app = FastAPI(
@@ -16,6 +17,12 @@ app = FastAPI(
 
 app.include_router(chat_router)
 
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+@app.get("/")
+def home():
+    return FileResponse("app/static/index.html")
 
 
 # Register routers
