@@ -13,7 +13,7 @@ from app.models.category import Category
 from app.models.fine import Fine
 from app.models.chat_session import ChatSession
 from app.models.chat_message import ChatMessage
-from app.models.pending_action import PendingAction
+from app.models.book_copy import BookCopy
 
 # Alembic Config object
 config = context.config

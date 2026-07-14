@@ -9,6 +9,7 @@ class BorrowRecord(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"))
     book_id = Column(Integer, ForeignKey("books.id"))
+    copy_id = Column(Integer, ForeignKey("book_copies.id"), nullable=True)
 
     borrow_date = Column(DateTime, default=datetime.utcnow)
     return_date = Column(DateTime, nullable=True)

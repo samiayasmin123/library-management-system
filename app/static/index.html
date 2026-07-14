@@ -9,37 +9,59 @@
 </head>
 <body>
 
-    <h1> AI Library Assistant</h1>
-
-    <p>The frontend is connected successfully.</p>
+    <h1>AI Library Assistant</h1>
 
     <hr>
 
-    <label>Session ID</label><br>
-    <input type="number" id="session" value="13"><br><br>
+    <!-- ================================= -->
+    <!-- LOGIN SECTION -->
+    <!-- ================================= -->
 
-    <label>User ID</label><br>
-    <input type="number" id="user" value="1"><br><br>
+    <div id="login-section">
 
-    <label>Message</label><br>
-    <input
-        type="text"
-        id="message"
-        placeholder="Type your message..."
-        style="width:400px;"
-    >
+        <h3>Login</h3>
 
-    <button onclick="sendMessage()">
-        Send
-    </button>
+        <label>Email</label><br>
+        <input type="email" id="login-email" placeholder="you@example.com"><br><br>
 
-    <hr>
+        <label>Password</label><br>
+        <input type="password" id="login-password" placeholder="Password"><br><br>
 
-    <h3>Response</h3>
+        <button onclick="login()">Login</button>
 
-    <pre id="response">
+        <p id="login-error" style="color:red;"></p>
+
+    </div>
+
+    <!-- ================================= -->
+    <!-- CHAT SECTION (hidden until login) -->
+    <!-- ================================= -->
+
+    <div id="chat-section" style="display:none;">
+
+        <button onclick="logout()" style="float:right;">Logout</button>
+
+        <label>Message</label><br>
+        <input
+            type="text"
+            id="message"
+            placeholder="Type your message..."
+            style="width:400px;"
+        >
+
+        <button onclick="sendMessage()">
+            Send
+        </button>
+
+        <hr>
+
+        <h3>Response</h3>
+
+        <pre id="response">
 No response yet...
-    </pre>
+        </pre>
+
+    </div>
 
     <script src="/static/index.js"></script>
 

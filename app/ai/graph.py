@@ -1,57 +1,56 @@
 from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.ai.state import ChatState
-from app.ai.agent import agent
+from app.ai.llm import get_llm
+from app.ai.tools import make_tools
+from app.ai.prompts import SYSTEM_PROMPT
+from app.ai.checkpointer import checkpointer
 from app.database import SessionLocal
-from app.ai import tools
-from app.ai.rag import retrieve_context
 
 
-def detect_intent(state: ChatState):
+# ---------------------------------------------------------------
+# Module-level LLM + tool schemas
+# ---------------------------------------------------------------
+# make_tools(db, user_id) needs a real, live DB session and a real
+# user_id to actually run a tool - but a DB session can't stay open
+# for the app's entire lifetime, and there's no real user yet at
+# import time. So we build a throwaway set of tools here just so
+# the LLM can learn each tool's name, description, and argument
+# schema via bind_tools(). These dummy tools are only ever used for
+# that schema-reading purpose - they are never invoked with db=None
+# or user_id=None. Real tools, bound to a real session and real
+# user, are built fresh inside tool_node() for every request.
 
-    message = state["message"].lower().strip()
+llm = get_llm()
 
-    if message in ["yes", "y"]:
-        return {"intent": "confirm"}
+_schema_only_tools = make_tools(db=None, user_id=None)
 
-    if message in ["no", "n"]:
-        return {"intent": "cancel"}
-
-    if "tell me about" in message or "description" in message or "details" in message:
-        return {"intent": "details"}
-
-    if "search" in message:
-        return {"intent": "search"}
-
-    if "available" in message:
-        return {"intent": "availability"}
-
-    if "borrow" in message:
-        return {"intent": "borrow"}
-
-    if "return" in message:
-        return {"intent": "return"}
-
-    if (
-        "recommend" in message
-        or "suggest" in message
-        or "recommendation" in message
-    ):
-        return {"intent": "recommend"}
-
-    if (
-        "my books" in message
-        or "borrowed books" in message
-        or "active books" in message
-    ):
-        return {"intent": "active"}
-
-    return {"intent": "chat"}
+llm_with_tools = llm.bind_tools(_schema_only_tools)
 
 
-# -------------------------------------------------
-# Execute Tool
-# -------------------------------------------------
+# ---------------------------------------------------------------
+# LLM node
+# ---------------------------------------------------------------
+
+def llm_node(state: ChatState):
+
+    messages = [SYSTEM_PROMPT] + state["messages"]
+
+    result = llm_with_tools.invoke(messages)
+
+    return {"messages": [result]}
+
+
+# ---------------------------------------------------------------
+# Tool node
+# ---------------------------------------------------------------
+# Opens a real DB session and builds the real tools for this one
+# request/user, delegates the actual dispatch-by-tool_calls logic to
+# a fresh ToolNode built from those real tools, then closes the
+# session. This keeps each request's DB session properly scoped
+# while still using LangGraph's own ToolNode machinery to match
+# AIMessage.tool_calls to the right tool function.
 
 def tool_node(state: ChatState):
 
@@ -59,387 +58,33 @@ def tool_node(state: ChatState):
 
     try:
 
-        intent = state["intent"]
-        message = state["message"]
+        real_tools = make_tools(db, state["user_id"])
 
-        session_id = state["session_id"]
-        user_id = state["user_id"]
+        executor = ToolNode(real_tools)
 
-        # =====================================================
-        # BOOK DETAILS
-        # =====================================================
+        result = executor.invoke(state)
 
-        if intent == "details":
+        db.commit()
 
-            query = (
-                message.lower()
-                .replace("tell me about", "")
-                .replace("description", "")
-                .replace("details", "")
-                .replace("about", "")
-                .strip()
-            )
-
-            book = tools.get_book_details(query, db)
-
-            if book is None:
-
-                result = "Book not found."
-
-            else:
-
-                status = (
-                    "Available"
-                    if book["available"]
-                    else "Borrowed"
-                )
-
-                genre = (
-                    ", ".join(book["genre"])
-                    if isinstance(book["genre"], list)
-                    else book["genre"]
-                )
-
-                result = (
-                    f"Title: {book['title']}\n"
-                    f"Author: {book['author']}\n"
-                    f"Genre: {genre}\n"
-                    f"Description: {book['description']}\n"
-                    f"Status: {status}"
-                )
-
-        # =====================================================
-        # SEARCH BOOKS
-        # =====================================================
-
-        elif intent == "search":
-
-            query = (
-                message.lower()
-                .replace("search", "")
-                .replace("for", "")
-                .strip()
-            )
-
-            books = tools.search_books(query, db)
-
-            if books:
-
-                text = ""
-
-                for book in books:
-
-                    availability = (
-                        "Available"
-                        if book["available"]
-                        else "Not Available"
-                    )
-
-                    text += (
-                        f"Title: {book['title']}\n"
-                        f"Author: {book['author']}\n"
-                        f"Status: {availability}\n\n"
-                    )
-
-                result = text
-
-            else:
-
-                result = "No matching books found."
-
-        # =====================================================
-        # AVAILABILITY
-        # =====================================================
-
-        elif intent == "availability":
-
-            result = "Availability feature coming soon."
-
-        # =====================================================
-        # BORROW
-        # =====================================================
-
-        elif intent == "borrow":
-
-            query = (
-                message.lower()
-                .replace("borrow", "")
-                .replace("book", "")
-                .strip()
-            )
-
-            books = tools.search_books(query, db)
-
-            if not books:
-
-                result = "No matching books found."
-
-            else:
-
-                first_book = books[0]
-
-                tools.stage_borrow(
-                    session_id=session_id,
-                    book_id=first_book["id"],
-                    db=db
-                )
-
-                result = (
-                    f'I found "{first_book["title"]}".\n\n'
-                    "Reply YES to borrow this book."
-                )
-
-        # =====================================================
-        # RETURN
-        # =====================================================
-
-        elif intent == "return":
-
-            query = (
-                message.lower()
-                .replace("return", "")
-                .replace("book", "")
-                .strip()
-            )
-
-            book = tools.find_user_borrowed_book(
-                user_id=user_id,
-                query=query,
-                db=db
-            )
-
-            if book is None:
-
-                result = "You have not borrowed this book."
-
-            else:
-
-                tools.stage_return(
-                    session_id=session_id,
-                    book_id=book["book_id"],
-                    db=db
-                )
-
-                result = (
-                    f'I found "{book["title"]}".\n\n'
-                    "Reply YES to return this book."
-                )
-
-        # =====================================================
-        # CONFIRM
-        # =====================================================
-
-        elif intent == "confirm":
-
-            pending = tools.get_pending_action(
-                session_id=session_id,
-                db=db
-            )
-
-            if pending is None:
-
-                result = "There is no pending action."
-
-            elif pending.action == "borrow":
-
-                result = tools.execute_borrow(
-                    session_id=session_id,
-                    user_id=user_id,
-                    db=db
-                )["message"]
-
-            elif pending.action == "return":
-
-                result = tools.execute_return(
-                    session_id=session_id,
-                    user_id=user_id,
-                    db=db
-                )["message"]
-
-            else:
-
-                result = "Unknown pending action."
-
-        # =====================================================
-        # CANCEL
-        # =====================================================
-
-        elif intent == "cancel":
-
-            pending = tools.get_pending_action(
-                session_id=session_id,
-                db=db
-            )
-
-            if pending:
-
-                db.delete(pending)
-                db.commit()
-
-            result = "Request cancelled."
-
-        # =====================================================
-        # RECOMMEND BOOKS
-        # =====================================================
-
-        elif intent == "recommend":
-
-            query = (
-                message.lower()
-                .replace("recommend", "")
-                .replace("suggest", "")
-                .replace("books", "")
-                .replace("book", "")
-                .strip()
-            )
-
-            books = tools.recommend_books(query, db)
-
-            if not books:
-
-                result = "No recommendations found."
-
-            else:
-
-                text = " AI Recommended Books:\n\n"
-
-                for book in books:
-
-                    status = (
-                        "Available"
-                        if book["available"]
-                        else "Borrowed"
-                    )
-
-                    text += (
-                        f"Title: {book['title']}\n"
-                        f"Author: {book['author']}\n"
-                        f"Status: {status}\n\n"
-                        f"Similarity Score: {book['score']}\n\n"
-                    )
-
-                result = text
-
-        # =====================================================
-        # ACTIVE BORROWED BOOKS
-        # =====================================================
-
-        elif intent == "active":
-
-            borrows = tools.get_active_borrows(
-                user_id=user_id,
-                db=db
-            )
-
-            if not borrows:
-
-                result = "You have no borrowed books."
-
-            else:
-
-                text = "Your borrowed books:\n\n"
-
-                for borrow in borrows:
-
-                    text += f"• Book ID: {borrow.book_id}\n"
-
-                result = text
-
-        # =====================================================
-        # CHAT
-        # =====================================================
-
-        else:
-
-            result = ""
-
-        return {
-            "tool_result": result
-        }
+        return result
 
     finally:
 
         db.close()
 
 
-# -------------------------------------------------
-# AI Response
-# -------------------------------------------------
-
-def response_node(state: ChatState):
-
-    db = SessionLocal()
-
-    try:
-
-        tool_result = state["tool_result"]
-
-        # If tool already produced a response,
-        # don't call Gemini.
-
-        if tool_result != "":
-
-            return {
-                "response": tool_result
-            }
-
-        # -------------------------
-        # RAG
-        # -------------------------
-
-        context = retrieve_context(
-            state["message"],
-            db
-        )
-
-        prompt = f"""
-You are an AI Library Assistant.
-
-Answer ONLY using the information below.
-
-If the answer is not present,
-say you couldn't find it.
-
-Library Information
-
-{context}
-
-User Question
-
-{state["message"]}
-"""
-
-        result = agent.run_sync(prompt)
-
-        return {
-
-            "response": result.output
-
-        }
-
-    finally:
-
-        db.close()
-
-
-# -------------------------------------------------
-# Build LangGraph
-# -------------------------------------------------
+# ---------------------------------------------------------------
+# Build the graph
+# ---------------------------------------------------------------
 
 builder = StateGraph(ChatState)
 
-builder.add_node("intent", detect_intent)
+builder.add_node("llm", llm_node)
+builder.add_node("tools", tool_node)
 
-builder.add_node("tool", tool_node)
+builder.set_entry_point("llm")
 
-builder.add_node("response", response_node)
+builder.add_conditional_edges("llm", tools_condition)
+builder.add_edge("tools", "llm")
 
-builder.set_entry_point("intent")
-
-builder.add_edge("intent", "tool")
-
-builder.add_edge("tool", "response")
-
-builder.add_edge("response", END)
-
-graph = builder.compile()
+graph = builder.compile(checkpointer=checkpointer)

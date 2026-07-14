@@ -1,15 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, cast, String
 from typing import List
-from app.utils.similarity import cosine_similarity
 from app.database import get_db
 from app.models.book import Book
 from app.schemas.book import BookCreate, BookOut
 from fastapi import HTTPException
 from app.utils.embedding import get_embedding
-import numpy as np
-from fastapi import Depends
 from app.utils.deps import admin_only
 
 
@@ -107,22 +104,15 @@ def delete_book(book_id: int, db: Session = Depends(get_db)):
 @router.get("/search", response_model=list[BookOut])
 def search_books(query: str, db: Session = Depends(get_db)):
 
-    query_embedding = np.array(get_embedding(query))
+    query_embedding = get_embedding(query)
 
-    books = db.query(Book).all()
-
-    scored_books = []
-
-    for book in books:
-        if book.embedding is None:
-            continue
-
-        book_embedding = np.array(book.embedding)
-
-        score = cosine_similarity(query_embedding, book_embedding)
-        scored_books.append((score, book))
-
-    scored_books.sort(key=lambda x: x[0], reverse=True)
+    books = (
+        db.query(Book)
+        .filter(Book.embedding.isnot(None))
+        .order_by(Book.embedding.cosine_distance(query_embedding))
+        .limit(10)
+        .all()
+    )
 
     return [
         BookOut(
@@ -133,7 +123,7 @@ def search_books(query: str, db: Session = Depends(get_db)):
             description=book.description,
             is_available=book.is_available
         )
-        for score, book in scored_books[:10]
+        for book in books
     ]
 
 
@@ -149,8 +139,7 @@ def available_books(db: Session = Depends(get_db)):
 def books_by_genre(genre: str, db: Session = Depends(get_db)):
 
     books = db.query(Book).filter(
-        Book.genre.ilike(f"%{genre}%")
+        cast(Book.genre, String).ilike(f"%{genre}%")
     ).all()
 
     return books
-

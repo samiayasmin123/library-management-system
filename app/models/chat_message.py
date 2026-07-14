@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON
 from datetime import datetime
 from app.database import Base
 
@@ -13,5 +13,7 @@ class ChatMessage(Base):
     role = Column(String)      # user / assistant / system
 
     message = Column(Text)
+
+    metadata_ = Column(JSON, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
