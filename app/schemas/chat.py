@@ -1,11 +1,12 @@
 from datetime import datetime
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: int | None = None
+    session_id: UUID | None = None
     awaiting_confirmation: bool = False
 
 
@@ -20,16 +21,19 @@ class ChatMessageOut(BaseModel):
 
 
 class ChatSessionOut(BaseModel):
-    id: int
+    # Exposed as "id" to the frontend, but sourced from the model's
+    # public_id (a UUID) rather than its internal integer primary
+    # key - callers never see the sequential database ID.
+    id: UUID = Field(validation_alias="public_id")
     user_id: int
     title: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ChatResponse(BaseModel):
-    session_id: int
+    session_id: UUID
     response: str
     awaiting_confirmation: bool
